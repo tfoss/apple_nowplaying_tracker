@@ -1,0 +1,30 @@
+# Database files
+*.duckdb
+*.duckdb.wal
+
+# Log files
+*.log
+*.jsonl
+last_cron_run.txt
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
