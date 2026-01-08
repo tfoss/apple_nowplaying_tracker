@@ -7,6 +7,9 @@ device_cache.json
 device_config_cache.pkl
 .spotify_cache
 
+# Environment variables
+.env
+
 # Analysis outputs
 viewing_sessions.csv
 

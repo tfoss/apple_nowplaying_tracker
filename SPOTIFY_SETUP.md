@@ -4,10 +4,10 @@ This guide will help you set up Spotify playback tracking.
 
 ## Prerequisites
 
-1. **Install spotipy library**:
+1. **Install required libraries**:
    ```bash
    conda activate apple-tv  # or your Python environment
-   pip install spotipy
+   pip install spotipy python-dotenv
    ```
 
 2. **Create a Spotify App** to get API credentials:
@@ -23,14 +23,25 @@ This guide will help you set up Spotify playback tracking.
 
 ## Configuration
 
-Set environment variables with your Spotify credentials:
+Create a `.env` file in the project directory with your Spotify credentials:
 
 ```bash
-export SPOTIFY_CLIENT_ID='your_client_id_here'
-export SPOTIFY_CLIENT_SECRET='your_client_secret_here'
+# Copy the example file
+cp .env.example .env
+
+# Edit .env and add your credentials
+nano .env  # or use your favorite editor
 ```
 
-To make these permanent, add them to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.)
+Your `.env` file should look like:
+
+```
+SPOTIFY_CLIENT_ID=your_actual_client_id
+SPOTIFY_CLIENT_SECRET=your_actual_client_secret
+SPOTIFY_REDIRECT_URI=http://localhost:8888/callback
+```
+
+**Note**: The `.env` file is gitignored and won't be committed to version control.
 
 ## First Run
 
