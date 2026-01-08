@@ -16,7 +16,7 @@ This guide will help you set up Spotify playback tracking.
    - Fill in:
      - **App name**: "Home Media Tracker" (or whatever you want)
      - **App description**: "Track my Spotify playback"
-     - **Redirect URI**: `http://localhost:8888/callback`
+     - **Redirect URI**: `http://127.0.0.1:8888/callback`
      - **APIs used**: Check "Web API"
    - Click "Save"
    - You'll see your **Client ID** and **Client Secret**
@@ -38,7 +38,7 @@ Your `.env` file should look like:
 ```
 SPOTIFY_CLIENT_ID=your_actual_client_id
 SPOTIFY_CLIENT_SECRET=your_actual_client_secret
-SPOTIFY_REDIRECT_URI=http://localhost:8888/callback
+SPOTIFY_REDIRECT_URI=http://127.0.0.1:8888/callback
 ```
 
 **Note**: The `.env` file is gitignored and won't be committed to version control.

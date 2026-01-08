@@ -43,7 +43,7 @@ TABLE_NAME = "now_playing"
 SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET")
 SPOTIFY_REDIRECT_URI = os.environ.get(
-    "SPOTIFY_REDIRECT_URI", "http://localhost:8888/callback"
+    "SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback"
 )
 
 # Scopes needed for playback information
