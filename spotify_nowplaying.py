@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-Track currently playing Spotify across all devices.
+Track currently playing Spotify across all devices for multiple users.
 
 Uses the Spotify Web API to get currently playing track information
 and stores it in the same database as Apple TV tracking.
 
+Supports multiple Spotify accounts (e.g., family members) by allowing
+multiple sets of credentials, each with their own cache file.
+
 Requires:
 - spotipy library: pip install spotipy
-- Spotify API credentials (Client ID & Secret)
+- Spotify API credentials (Client ID & Secret) for each user
 - User authentication (uses OAuth with local redirect)
 """
 
@@ -39,15 +42,86 @@ except ImportError:
 DB_PATH = Path(__file__).parent / "atv_usage.duckdb"
 TABLE_NAME = "now_playing"
 
-# Spotify API credentials - load from .env or environment variables
-SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID")
-SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET")
-SPOTIFY_REDIRECT_URI = os.environ.get(
-    "SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback"
-)
-
 # Scopes needed for playback information
 SPOTIFY_SCOPES = "user-read-currently-playing user-read-playback-state"
+
+
+def get_spotify_users():
+    """
+    Load Spotify user configurations from environment variables.
+
+    Supports multiple users with format:
+    SPOTIFY_USER_1_NAME=Mom
+    SPOTIFY_USER_1_CLIENT_ID=xxx
+    SPOTIFY_USER_1_CLIENT_SECRET=yyy
+    SPOTIFY_USER_1_REDIRECT_URI=http://127.0.0.1:8888/callback (optional)
+
+    SPOTIFY_USER_2_NAME=Dad
+    SPOTIFY_USER_2_CLIENT_ID=xxx
+    SPOTIFY_USER_2_CLIENT_SECRET=yyy
+
+    Returns list of user configs: [
+        {
+            "name": "Mom",
+            "client_id": "xxx",
+            "client_secret": "yyy",
+            "redirect_uri": "http://127.0.0.1:8888/callback"
+        },
+        ...
+    ]
+    """
+    users = []
+
+    # Check for numbered user configs (SPOTIFY_USER_1_*, SPOTIFY_USER_2_*, etc.)
+    i = 1
+    while True:
+        name_key = f"SPOTIFY_USER_{i}_NAME"
+        client_id_key = f"SPOTIFY_USER_{i}_CLIENT_ID"
+        client_secret_key = f"SPOTIFY_USER_{i}_CLIENT_SECRET"
+        redirect_uri_key = f"SPOTIFY_USER_{i}_REDIRECT_URI"
+
+        name = os.environ.get(name_key)
+        client_id = os.environ.get(client_id_key)
+        client_secret = os.environ.get(client_secret_key)
+
+        # If we don't find a user config, we've reached the end
+        if not name or not client_id or not client_secret:
+            break
+
+        redirect_uri = os.environ.get(
+            redirect_uri_key, "http://127.0.0.1:8888/callback"
+        )
+
+        users.append(
+            {
+                "name": name,
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uri": redirect_uri,
+            }
+        )
+
+        i += 1
+
+    # Fallback to single user config for backwards compatibility
+    if not users:
+        client_id = os.environ.get("SPOTIFY_CLIENT_ID")
+        client_secret = os.environ.get("SPOTIFY_CLIENT_SECRET")
+        redirect_uri = os.environ.get(
+            "SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback"
+        )
+
+        if client_id and client_secret:
+            users.append(
+                {
+                    "name": "Default",
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "redirect_uri": redirect_uri,
+                }
+            )
+
+    return users
 
 
 def init_duckdb():
@@ -102,26 +176,29 @@ def get_last_row(con, device_name):
     return result
 
 
-def log_spotify_playback():
-    """Get currently playing Spotify track and log it to database."""
+def log_spotify_playback_for_user(user_config, con):
+    """
+    Get currently playing Spotify track for one user and log it to database.
 
-    # Check for credentials
-    if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-        print("ERROR: Spotify credentials not set!")
-        print("Set environment variables:")
-        print("  export SPOTIFY_CLIENT_ID='your_client_id'")
-        print("  export SPOTIFY_CLIENT_SECRET='your_client_secret'")
-        print("\nGet credentials at: https://developer.spotify.com/dashboard")
-        return
+    Args:
+        user_config: Dict with keys 'name', 'client_id', 'client_secret', 'redirect_uri'
+        con: DuckDB connection (shared across users)
+    """
+    user_name = user_config["name"]
 
-    # Initialize Spotify client
+    # Create unique cache file for this user
+    cache_path = str(
+        Path(__file__).parent / f".spotify_cache_{user_name.lower().replace(' ', '_')}"
+    )
+
+    # Initialize Spotify client for this user
     sp = spotipy.Spotify(
         auth_manager=SpotifyOAuth(
-            client_id=SPOTIFY_CLIENT_ID,
-            client_secret=SPOTIFY_CLIENT_SECRET,
-            redirect_uri=SPOTIFY_REDIRECT_URI,
+            client_id=user_config["client_id"],
+            client_secret=user_config["client_secret"],
+            redirect_uri=user_config["redirect_uri"],
             scope=SPOTIFY_SCOPES,
-            cache_path=str(Path(__file__).parent / ".spotify_cache"),
+            cache_path=cache_path,
         )
     )
 
@@ -129,76 +206,90 @@ def log_spotify_playback():
     try:
         current = sp.current_playback()
     except Exception as e:
-        print(f"Error getting Spotify playback: {e}")
+        print(f"[{user_name}] Error getting Spotify playback: {e}")
         return
 
     if not current or not current.get("item"):
-        print("Nothing currently playing on Spotify")
+        print(f"[{user_name}] Nothing currently playing")
         return
 
-    con = init_duckdb()
+    # Extract playback information
+    item = current["item"]
+    device = current.get("device", {})
 
-    try:
-        # Extract playback information
-        item = current["item"]
-        device = current.get("device", {})
+    ts = datetime.now()
+    # Include user name in device identifier
+    device_name = f"Spotify ({user_name}): {device.get('name', 'Unknown Device')}"
+    device_type = device.get("type", "Unknown")
+    device_model = f"Spotify-{device_type}"
 
-        ts = datetime.now()
-        device_name = f"Spotify: {device.get('name', 'Unknown Device')}"
-        device_type = device.get("type", "Unknown")
-        device_model = f"Spotify-{device_type}"
+    # Map Spotify states to our format
+    is_playing = current.get("is_playing", False)
+    state = "Playing" if is_playing else "Paused"
 
-        # Map Spotify states to our format
-        is_playing = current.get("is_playing", False)
-        state = "Playing" if is_playing else "Paused"
+    app = "Spotify"
+    title = item.get("name")
 
-        app = "Spotify"
-        title = item.get("name")
+    # Get artists (can be multiple)
+    artists = item.get("artists", [])
+    artist = ", ".join([a.get("name") for a in artists]) if artists else None
 
-        # Get artists (can be multiple)
-        artists = item.get("artists", [])
-        artist = ", ".join([a.get("name") for a in artists]) if artists else None
+    album_obj = item.get("album", {})
+    album = album_obj.get("name")
 
-        album_obj = item.get("album", {})
-        album = album_obj.get("name")
+    # Spotify doesn't have series info
+    series_name = None
+    season = None
+    episode = None
 
-        # Spotify doesn't have series info
-        series_name = None
-        season = None
-        episode = None
+    # Always Music for Spotify
+    media_type = "Music"
 
-        # Always Music for Spotify
-        media_type = "Music"
+    # Position and duration in seconds
+    position = (
+        current.get("progress_ms", 0) / 1000.0 if current.get("progress_ms") else None
+    )
+    duration = item.get("duration_ms", 0) / 1000.0 if item.get("duration_ms") else None
 
-        # Position and duration in seconds
-        position = (
-            current.get("progress_ms", 0) / 1000.0
-            if current.get("progress_ms")
-            else None
+    # Check last row to avoid repeated Paused spam
+    last = get_last_row(con, device_name)
+    if last is not None:
+        (last_ts, last_state, last_title, last_artist, last_album) = last
+
+        same_track = (
+            last_title == title and last_artist == artist and last_album == album
         )
-        duration = (
-            item.get("duration_ms", 0) / 1000.0 if item.get("duration_ms") else None
-        )
 
-        # Check last row to avoid repeated Paused spam
-        last = get_last_row(con, device_name)
-        if last is not None:
-            (last_ts, last_state, last_title, last_artist, last_album) = last
+        # If we are still Paused on the same track, skip logging
+        if state == "Paused" and last_state == "Paused" and same_track:
+            print(f"[{user_name}] Still paused on same track, skipping")
+            return
 
-            same_track = (
-                last_title == title and last_artist == artist and last_album == album
-            )
+    # Build row and insert
+    row = (
+        ts,
+        device_name,
+        None,  # address (not applicable for Spotify)
+        state,
+        app,
+        title,
+        artist,
+        album,
+        series_name,
+        season,
+        episode,
+        media_type,
+        position,
+        duration,
+        device_model,
+    )
 
-            # If we are still Paused on the same track, skip logging
-            if state == "Paused" and last_state == "Paused" and same_track:
-                print(f"[{device_name}] Still paused on same track, skipping")
-                return
-
-        # Build row and insert
-        row = (
+    con.execute(
+        f"""
+        INSERT INTO {TABLE_NAME} (
             ts,
             device_name,
-            None,  # address (not applicable for Spotify)
+            address,
             state,
             app,
             title,
@@ -210,45 +301,54 @@ def log_spotify_playback():
             media_type,
             position,
             duration,
-            device_model,
+            device_model
         )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        row,
+    )
 
-        con.execute(
-            f"""
-            INSERT INTO {TABLE_NAME} (
-                ts,
-                device_name,
-                address,
-                state,
-                app,
-                title,
-                artist,
-                album,
-                series_name,
-                season,
-                episode,
-                media_type,
-                position,
-                duration,
-                device_model
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            row,
-        )
-
-        # Human-readable debug line
-        print(
-            f"[{ts.isoformat()}] device={device_name} state={state} app={app} title={title} artist={artist}"
-        )
-
-    finally:
-        con.close()
+    # Human-readable debug line
+    print(
+        f"[{ts.isoformat()}] user={user_name} device={device.get('name')} state={state} title={title} artist={artist}"
+    )
 
 
 def main():
-    """Main function."""
-    log_spotify_playback()
+    """Main function - poll all configured Spotify users."""
+
+    # Load user configurations
+    users = get_spotify_users()
+
+    if not users:
+        print("ERROR: No Spotify users configured!")
+        print("\nFor multiple users, set environment variables:")
+        print("  SPOTIFY_USER_1_NAME=Mom")
+        print("  SPOTIFY_USER_1_CLIENT_ID=xxx")
+        print("  SPOTIFY_USER_1_CLIENT_SECRET=yyy")
+        print("")
+        print("  SPOTIFY_USER_2_NAME=Dad")
+        print("  SPOTIFY_USER_2_CLIENT_ID=xxx")
+        print("  SPOTIFY_USER_2_CLIENT_SECRET=yyy")
+        print("\nOr for single user (backwards compatible):")
+        print("  SPOTIFY_CLIENT_ID=xxx")
+        print("  SPOTIFY_CLIENT_SECRET=yyy")
+        print("\nGet credentials at: https://developer.spotify.com/dashboard")
+        return
+
+    print(
+        f"Tracking {len(users)} Spotify user(s): {', '.join([u['name'] for u in users])}"
+    )
+
+    # Initialize database once
+    con = init_duckdb()
+
+    try:
+        # Poll each user
+        for user in users:
+            log_spotify_playback_for_user(user, con)
+    finally:
+        con.close()
 
 
 if __name__ == "__main__":

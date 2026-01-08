@@ -6,6 +6,7 @@
 device_cache.json
 device_config_cache.pkl
 .spotify_cache
+.spotify_cache_*
 
 # Environment variables
 .env
