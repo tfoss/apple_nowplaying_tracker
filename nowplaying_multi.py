@@ -1,5 +1,6 @@
 import asyncio
-from datetime import datetime
+import json
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import duckdb
@@ -10,6 +11,8 @@ from pyatv.storage.file_storage import FileStorage
 
 DB_PATH = Path(__file__).parent / "atv_usage.duckdb"
 TABLE_NAME = "now_playing"
+DEVICE_CACHE_PATH = Path(__file__).parent / "device_cache.json"
+CACHE_EXPIRY_HOURS = 24  # Re-scan once per day
 
 
 def init_duckdb():
@@ -196,29 +199,78 @@ async def log_device_now_playing(config, loop, storage):
         con.close()
 
 
+def load_cached_devices():
+    """Load cached device identifiers and last scan time."""
+    if not DEVICE_CACHE_PATH.exists():
+        return None, None
+
+    try:
+        with open(DEVICE_CACHE_PATH, "r") as f:
+            cache = json.load(f)
+        last_scan = datetime.fromisoformat(cache["last_scan"])
+        device_ids = cache["device_ids"]
+        return device_ids, last_scan
+    except Exception:
+        return None, None
+
+
+def save_cached_devices(device_ids):
+    """Save device identifiers and current timestamp to cache."""
+    cache = {"last_scan": datetime.now().isoformat(), "device_ids": device_ids}
+    with open(DEVICE_CACHE_PATH, "w") as f:
+        json.dump(cache, f, indent=2)
+
+
 async def log_all_devices(loop):
     """Scan for all Apple TVs and log their now playing info concurrently."""
     storage = FileStorage.default_storage(loop)
     await storage.load()
 
-    # Scan for all devices on the network
-    print("Scanning for Apple TVs and HomePods...")
-    all_devices = await pyatv.scan(loop, storage=storage)
+    # Check if we have a valid cache
+    cached_ids, last_scan = load_cached_devices()
+    cache_valid = (
+        cached_ids is not None
+        and last_scan is not None
+        and datetime.now() - last_scan < timedelta(hours=CACHE_EXPIRY_HOURS)
+    )
 
-    # Filter to include Apple TVs and HomePods (exclude Macs and Unknown devices)
-    devices = [
-        config
-        for config in all_devices
-        if config.device_info
-        and config.device_info.model
-        and str(config.device_info.model) != "DeviceModel.Unknown"
-    ]
+    if cache_valid:
+        # Use cached device identifiers for faster scanning
+        print(
+            f"Using cached devices (last scan: {last_scan.strftime('%Y-%m-%d %H:%M')})"
+        )
+        devices = []
+        for device_id in cached_ids:
+            scanned = await pyatv.scan(loop, identifier=device_id, storage=storage)
+            if scanned:
+                devices.extend(scanned)
+    else:
+        # Perform full network scan
+        print("Scanning for Apple TVs and HomePods...")
+        all_devices = await pyatv.scan(loop, storage=storage)
+
+        # Filter to include Apple TVs and HomePods (exclude Macs and Unknown devices)
+        devices = [
+            config
+            for config in all_devices
+            if config.device_info
+            and config.device_info.model
+            and str(config.device_info.model) != "DeviceModel.Unknown"
+        ]
+
+        if not devices:
+            print("No Apple TVs or HomePods found on the network")
+            print(
+                f"Found {len(all_devices)} other devices: {', '.join([config.name for config in all_devices])}"
+            )
+            return
+
+        # Cache the device identifiers for next time
+        device_ids = [str(config.identifier) for config in devices]
+        save_cached_devices(device_ids)
 
     if not devices:
-        print("No Apple TVs or HomePods found on the network")
-        print(
-            f"Found {len(all_devices)} other devices: {', '.join([config.name for config in all_devices])}"
-        )
+        print("No cached devices found on the network")
         return
 
     print(

@@ -3,6 +3,6 @@
 source "$HOME/mambaforge/etc/profile.d/conda.sh"
 conda activate apple-tv
 
-python "$HOME/code/appletv_poker/chatgptversion/nowplaying.py"
+python "$HOME/code/appletv_poker/chatgptversion/nowplaying_multi.py"
 
 echo "$(date) – cron ran" > "$HOME/code/appletv_poker/chatgptversion/last_cron_run.txt"
