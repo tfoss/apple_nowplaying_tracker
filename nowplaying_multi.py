@@ -26,6 +26,7 @@ def init_duckdb():
             ts TIMESTAMP,
             device_name TEXT,
             address TEXT,
+            device_model TEXT,
             state TEXT,
             app TEXT,
             title TEXT,
@@ -39,6 +40,14 @@ def init_duckdb():
             duration DOUBLE
         )
     """)
+
+    # Add device_model column if it doesn't exist (migration for existing tables)
+    try:
+        con.execute(f"ALTER TABLE {TABLE_NAME} ADD COLUMN device_model TEXT")
+    except:
+        # Column already exists
+        pass
+
     return con
 
 
@@ -101,9 +110,6 @@ async def log_device_now_playing(config, loop, storage):
             if state not in ("Playing", "Paused"):
                 return
 
-            # Normalize media_type enum → text
-            media_type = enum_to_text(getattr(playing, "media_type", None))
-
             ts = datetime.now()
 
             app = getattr(playing, "app", None)
@@ -115,6 +121,26 @@ async def log_device_now_playing(config, loop, storage):
             episode = getattr(playing, "episode_number", None)
             position = playing.position
             duration = playing.total_time
+
+            # Normalize media_type enum → text
+            media_type = enum_to_text(getattr(playing, "media_type", None))
+
+            # Get device model for better media_type inference
+            device_model = None
+            if config.device_info and config.device_info.model:
+                device_model = enum_to_text(config.device_info.model)
+
+            # Infer media_type if unknown based on device type
+            if media_type == "Unknown" or media_type is None:
+                if device_model and "HomePod" in device_model:
+                    # HomePods are primarily music devices
+                    media_type = "Music"
+                elif artist is not None:
+                    # Has artist field, likely music
+                    media_type = "Music"
+                elif series_name is not None:
+                    # Has series info, likely TV
+                    media_type = "Video"
 
             # Check last row to avoid repeated Paused spam
             last = get_last_row(con, config.name)
@@ -159,6 +185,7 @@ async def log_device_now_playing(config, loop, storage):
                 media_type,
                 position,
                 duration,
+                device_model,
             )
 
             con.execute(
@@ -177,9 +204,10 @@ async def log_device_now_playing(config, loop, storage):
                     episode,
                     media_type,
                     position,
-                    duration
+                    duration,
+                    device_model
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 row,
             )
