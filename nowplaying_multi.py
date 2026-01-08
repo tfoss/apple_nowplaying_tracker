@@ -112,7 +112,10 @@ async def log_device_now_playing(config, loop, storage):
 
             ts = datetime.now()
 
-            app = getattr(playing, "app", None)
+            # Get app info from metadata (not from playing object)
+            app_obj = atv.metadata.app
+            app = app_obj.name if app_obj else None
+            app_id = app_obj.identifier if app_obj else None
             title = playing.title
             artist = getattr(playing, "artist", None)
             album = getattr(playing, "album", None)
