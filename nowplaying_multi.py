@@ -135,12 +135,6 @@ async def log_device_now_playing(config, loop, storage):
                 if device_model and "HomePod" in device_model:
                     # HomePods are primarily music devices
                     media_type = "Music"
-                elif artist is not None:
-                    # Has artist field, likely music
-                    media_type = "Music"
-                elif series_name is not None:
-                    # Has series info, likely TV
-                    media_type = "Video"
 
             # Check last row to avoid repeated Paused spam
             last = get_last_row(con, config.name)
