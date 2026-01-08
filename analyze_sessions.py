@@ -32,10 +32,17 @@ def create_sessions_table(con):
 
     # Create a sessions table with start/end times and duration
     # Split into multiple CTEs to avoid nested window functions
-    # Drop view if it exists, then create table
-    con.execute("DROP VIEW IF EXISTS viewing_sessions")
+    # Drop both view and table if they exist (handles migration from view to table)
+    try:
+        con.execute("DROP VIEW IF EXISTS viewing_sessions")
+    except:
+        pass
+    try:
+        con.execute("DROP TABLE IF EXISTS viewing_sessions")
+    except:
+        pass
     con.execute(f"""
-        CREATE OR REPLACE TABLE viewing_sessions AS
+        CREATE TABLE viewing_sessions AS
         WITH ordered_plays AS (
             SELECT
                 ts,
