@@ -6,6 +6,9 @@
 device_cache.json
 device_config_cache.pkl
 
+# Analysis outputs
+viewing_sessions.csv
+
 # Log files
 *.log
 *.jsonl
