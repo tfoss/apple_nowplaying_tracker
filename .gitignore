@@ -5,6 +5,7 @@
 # Cache files
 device_cache.json
 device_config_cache.pkl
+.spotify_cache
 
 # Analysis outputs
 viewing_sessions.csv
