@@ -4,6 +4,7 @@
 
 # Cache files
 device_cache.json
+device_config_cache.pkl
 
 # Log files
 *.log

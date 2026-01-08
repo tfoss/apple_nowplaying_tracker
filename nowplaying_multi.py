@@ -1,5 +1,7 @@
 import asyncio
 import json
+import pickle
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -12,6 +14,7 @@ from pyatv.storage.file_storage import FileStorage
 DB_PATH = Path(__file__).parent / "atv_usage.duckdb"
 TABLE_NAME = "now_playing"
 DEVICE_CACHE_PATH = Path(__file__).parent / "device_cache.json"
+DEVICE_CONFIG_CACHE_PATH = Path(__file__).parent / "device_config_cache.pkl"
 CACHE_EXPIRY_HOURS = 24  # Re-scan once per day
 
 
@@ -74,13 +77,22 @@ def get_last_row(con, device_name):
 
 async def log_device_now_playing(config, loop, storage):
     """Log now playing info for a single Apple TV device."""
+    device_start = time.time()
     con = init_duckdb()
 
     try:
+        connect_start = time.time()
         atv = await pyatv.connect(config, loop, storage=storage)
+        connect_time = time.time() - connect_start
+        print(f"[TIMING] {config.name}: connect took {connect_time:.2f}s")
 
         try:
+            metadata_start = time.time()
             playing = await atv.metadata.playing()
+            metadata_time = time.time() - metadata_start
+            print(
+                f"[TIMING] {config.name}: metadata.playing() took {metadata_time:.2f}s"
+            )
 
             # Normalize state enum → text
             state = enum_to_text(playing.device_state)
@@ -199,55 +211,63 @@ async def log_device_now_playing(config, loop, storage):
         con.close()
 
 
-def load_cached_devices():
-    """Load cached device identifiers and last scan time."""
-    if not DEVICE_CACHE_PATH.exists():
+def load_cached_configs():
+    """Load cached device configs (full pickled objects) and last scan time."""
+    if not DEVICE_CONFIG_CACHE_PATH.exists():
         return None, None
 
     try:
-        with open(DEVICE_CACHE_PATH, "r") as f:
-            cache = json.load(f)
-        last_scan = datetime.fromisoformat(cache["last_scan"])
-        device_ids = cache["device_ids"]
-        return device_ids, last_scan
-    except Exception:
+        with open(DEVICE_CONFIG_CACHE_PATH, "rb") as f:
+            cache = pickle.load(f)
+        last_scan = cache["last_scan"]
+        configs = cache["configs"]
+        return configs, last_scan
+    except Exception as e:
+        print(f"Failed to load cached configs: {e}")
         return None, None
 
 
-def save_cached_devices(device_ids):
-    """Save device identifiers and current timestamp to cache."""
-    cache = {"last_scan": datetime.now().isoformat(), "device_ids": device_ids}
-    with open(DEVICE_CACHE_PATH, "w") as f:
-        json.dump(cache, f, indent=2)
+def save_cached_configs(devices):
+    """Save full device configs (pickled) and current timestamp to cache."""
+    cache = {"last_scan": datetime.now(), "configs": devices}
+    try:
+        with open(DEVICE_CONFIG_CACHE_PATH, "wb") as f:
+            pickle.dump(cache, f)
+        print(f"Cached {len(devices)} device configs")
+    except Exception as e:
+        print(f"Failed to save cached configs: {e}")
 
 
 async def log_all_devices(loop):
     """Scan for all Apple TVs and log their now playing info concurrently."""
+    script_start = time.time()
+
     storage = FileStorage.default_storage(loop)
     await storage.load()
 
-    # Check if we have a valid cache
-    cached_ids, last_scan = load_cached_devices()
+    # Check if we have cached configs
+    cached_configs, last_scan = load_cached_configs()
     cache_valid = (
-        cached_ids is not None
+        cached_configs is not None
         and last_scan is not None
         and datetime.now() - last_scan < timedelta(hours=CACHE_EXPIRY_HOURS)
     )
 
     if cache_valid:
-        # Use cached device identifiers for faster scanning
+        # Use cached configs directly - no scanning needed!
         print(
-            f"Using cached devices (last scan: {last_scan.strftime('%Y-%m-%d %H:%M')})"
+            f"Using cached device configs (last scan: {last_scan.strftime('%Y-%m-%d %H:%M')})"
         )
-        devices = []
-        for device_id in cached_ids:
-            scanned = await pyatv.scan(loop, identifier=device_id, storage=storage)
-            if scanned:
-                devices.extend(scanned)
+        load_time = time.time() - script_start
+        print(f"[TIMING] Loading cached configs took {load_time:.2f}s")
+        devices = cached_configs
     else:
         # Perform full network scan
         print("Scanning for Apple TVs and HomePods...")
+        scan_start = time.time()
         all_devices = await pyatv.scan(loop, storage=storage)
+        scan_time = time.time() - scan_start
+        print(f"[TIMING] Full network scan took {scan_time:.2f}s")
 
         # Filter to include Apple TVs and HomePods (exclude Macs and Unknown devices)
         devices = [
@@ -265,9 +285,8 @@ async def log_all_devices(loop):
             )
             return
 
-        # Cache the device identifiers for next time
-        device_ids = [str(config.identifier) for config in devices]
-        save_cached_devices(device_ids)
+        # Cache the full device configs for next time
+        save_cached_configs(devices)
 
     if not devices:
         print("No cached devices found on the network")
@@ -278,8 +297,14 @@ async def log_all_devices(loop):
     )
 
     # Process all devices concurrently
+    gather_start = time.time()
     tasks = [log_device_now_playing(config, loop, storage) for config in devices]
     await asyncio.gather(*tasks)
+    gather_time = time.time() - gather_start
+    print(f"[TIMING] Processing all devices took {gather_time:.2f}s")
+
+    total_time = time.time() - script_start
+    print(f"[TIMING] Total script execution: {total_time:.2f}s")
 
 
 if __name__ == "__main__":
