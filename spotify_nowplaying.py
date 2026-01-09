@@ -238,10 +238,10 @@ def log_spotify_playback_for_user(user_config, con):
     device = current.get("device", {})
 
     ts = datetime.now()
-    # Include user name in device identifier
-    device_name = f"Spotify ({user_name}): {device.get('name', 'Unknown Device')}"
+    # Clean device info (no concatenation)
+    device_name = device.get("name", "Unknown Device")
     device_type = device.get("type", "Unknown")
-    device_model = f"Spotify-{device_type}"
+    device_model = device_type  # Just the type, not "Spotify-Type"
 
     # Map Spotify states to our format
     is_playing = current.get("is_playing", False)
@@ -272,7 +272,17 @@ def log_spotify_playback_for_user(user_config, con):
     duration = item.get("duration_ms", 0) / 1000.0 if item.get("duration_ms") else None
 
     # Check last row to avoid repeated Paused spam
-    last = get_last_row(con, device_name)
+    # For Spotify, need to match on both device_name and user_name
+    last = con.execute(
+        f"""
+        SELECT ts, state, title, artist, album
+        FROM {TABLE_NAME}
+        WHERE device_name = ? AND user_name = ?
+        ORDER BY ts DESC
+        LIMIT 1
+        """,
+        [device_name, user_name],
+    ).fetchone()
     if last is not None:
         (last_ts, last_state, last_title, last_artist, last_album) = last
 
@@ -302,6 +312,7 @@ def log_spotify_playback_for_user(user_config, con):
         position,
         duration,
         device_model,
+        user_name,  # Add user_name
     )
 
     con.execute(
@@ -321,9 +332,10 @@ def log_spotify_playback_for_user(user_config, con):
             media_type,
             position,
             duration,
-            device_model
+            device_model,
+            user_name
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         row,
     )
