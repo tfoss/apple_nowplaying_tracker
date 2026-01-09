@@ -7,6 +7,17 @@ device_cache.json
 device_config_cache.pkl
 .spotify_cache
 .spotify_cache_*
+.pyatv.conf
+
+# Claude and debug scripts
+.claude-env
+.claude-python-wrapper.sh
+debug_*.py
+test_*.py
+check_*.py
+compare_*.py
+pair_*.py
+save_*.py
 
 # Environment variables
 .env
