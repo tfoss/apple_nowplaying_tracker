@@ -50,15 +50,16 @@ def get_spotify_users():
     """
     Load Spotify user configurations from environment variables.
 
-    Supports multiple users with format:
+    Supports multiple users sharing one app with format:
+    SPOTIFY_CLIENT_ID=xxx (shared app credentials)
+    SPOTIFY_CLIENT_SECRET=yyy (shared app credentials)
+    SPOTIFY_REDIRECT_URI=http://127.0.0.1:8888/callback (optional)
+    SPOTIFY_USERS=Mom,Dad,Kid (comma-separated list of user names)
+
+    Or legacy format with separate credentials per user:
     SPOTIFY_USER_1_NAME=Mom
     SPOTIFY_USER_1_CLIENT_ID=xxx
     SPOTIFY_USER_1_CLIENT_SECRET=yyy
-    SPOTIFY_USER_1_REDIRECT_URI=http://127.0.0.1:8888/callback (optional)
-
-    SPOTIFY_USER_2_NAME=Dad
-    SPOTIFY_USER_2_CLIENT_ID=xxx
-    SPOTIFY_USER_2_CLIENT_SECRET=yyy
 
     Returns list of user configs: [
         {
@@ -72,7 +73,30 @@ def get_spotify_users():
     """
     users = []
 
-    # Check for numbered user configs (SPOTIFY_USER_1_*, SPOTIFY_USER_2_*, etc.)
+    # New simplified format: one app, multiple users
+    client_id = os.environ.get("SPOTIFY_CLIENT_ID")
+    client_secret = os.environ.get("SPOTIFY_CLIENT_SECRET")
+    redirect_uri = os.environ.get(
+        "SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback"
+    )
+    users_list = os.environ.get("SPOTIFY_USERS", "").strip()
+
+    if client_id and client_secret and users_list:
+        # Parse comma-separated user names
+        for user_name in users_list.split(","):
+            user_name = user_name.strip()
+            if user_name:
+                users.append(
+                    {
+                        "name": user_name,
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "redirect_uri": redirect_uri,
+                    }
+                )
+        return users
+
+    # Legacy format: separate credentials per user (backwards compatibility)
     i = 1
     while True:
         name_key = f"SPOTIFY_USER_{i}_NAME"
@@ -103,23 +127,19 @@ def get_spotify_users():
 
         i += 1
 
-    # Fallback to single user config for backwards compatibility
-    if not users:
-        client_id = os.environ.get("SPOTIFY_CLIENT_ID")
-        client_secret = os.environ.get("SPOTIFY_CLIENT_SECRET")
-        redirect_uri = os.environ.get(
-            "SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback"
-        )
+    if users:
+        return users
 
-        if client_id and client_secret:
-            users.append(
-                {
-                    "name": "Default",
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                    "redirect_uri": redirect_uri,
-                }
-            )
+    # Single user fallback (no SPOTIFY_USERS specified)
+    if client_id and client_secret:
+        users.append(
+            {
+                "name": "Default",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uri": redirect_uri,
+            }
+        )
 
     return users
 

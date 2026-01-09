@@ -10,25 +10,27 @@ This guide will help you set up Spotify playback tracking for single or multiple
    pip install spotipy python-dotenv
    ```
 
-2. **Create Spotify Apps** to get API credentials:
+2. **Create ONE Spotify App** to get API credentials:
    
-   **IMPORTANT**: Each family member needs their own Spotify App credentials. This is because:
-   - Each user authenticates with their own Spotify account
-   - Each user's credentials track only their listening activity
-   - This allows you to see who is listening to what
-   
-   **For each user:**
    - Go to https://developer.spotify.com/dashboard
-   - Log in with **that user's Spotify account** (or create apps under one account if preferred)
+   - Log in with any Spotify account (doesn't matter whose)
    - Click "Create app"
    - Fill in:
-     - **App name**: "Home Media Tracker - [User Name]" (e.g., "Home Media Tracker - Mom")
-     - **App description**: "Track my Spotify playback"
+     - **App name**: "Home Media Tracker" (or whatever you want)
+     - **App description**: "Track family Spotify playback"
      - **Redirect URI**: `http://127.0.0.1:8888/callback`
      - **APIs used**: Check "Web API"
    - Click "Save"
    - Copy the **Client ID** and **Client Secret**
-   - Repeat for each family member
+   
+3. **Add Family Members to App** (if tracking multiple users):
+   
+   - In the app dashboard, click on the app you just created
+   - Go to "User Management" in the left sidebar
+   - Click "Add User"
+   - Enter each family member's Spotify email address
+   - Each person will receive an invitation email to authorize the app
+   - **Note**: This step is only needed during development. Once you submit the app for quota extension, you won't need this.
 
 ## Configuration
 
@@ -42,29 +44,22 @@ cp .env.example .env
 nano .env  # or use your favorite editor
 ```
 
-### Option 1: Multiple Users (Family)
+### For Multiple Users (Recommended)
 
-For tracking multiple family members:
+Use **one app** with multiple user names:
 
 ```
-SPOTIFY_USER_1_NAME=Mom
-SPOTIFY_USER_1_CLIENT_ID=abc123...
-SPOTIFY_USER_1_CLIENT_SECRET=xyz789...
-SPOTIFY_USER_1_REDIRECT_URI=http://127.0.0.1:8888/callback
-
-SPOTIFY_USER_2_NAME=Dad
-SPOTIFY_USER_2_CLIENT_ID=def456...
-SPOTIFY_USER_2_CLIENT_SECRET=uvw012...
-SPOTIFY_USER_2_REDIRECT_URI=http://127.0.0.1:8888/callback
-
-# Add more users as needed (USER_3, USER_4, etc.)
+SPOTIFY_CLIENT_ID=your_actual_client_id
+SPOTIFY_CLIENT_SECRET=your_actual_client_secret
+SPOTIFY_REDIRECT_URI=http://127.0.0.1:8888/callback
+SPOTIFY_USERS=Mom,Dad,Kid
 ```
 
-The script will track all configured users in a single run.
+The `SPOTIFY_USERS` variable is a comma-separated list of user names. Each person will authenticate with their own Spotify account when they first run the script.
 
-### Option 2: Single User
+### For Single User
 
-For tracking just one person (backwards compatible):
+Just omit the `SPOTIFY_USERS` variable:
 
 ```
 SPOTIFY_CLIENT_ID=your_actual_client_id
@@ -76,50 +71,47 @@ SPOTIFY_REDIRECT_URI=http://127.0.0.1:8888/callback
 
 ## First Run - Authentication
 
-### For Multiple Users
-
-Each user needs to authenticate once. Run the script manually first:
+Each user needs to authenticate once with their Spotify account. Run the script manually first:
 
 ```bash
 python spotify_nowplaying.py
 ```
+
+### For Multiple Users
 
 The script will authenticate each user **one at a time**:
 
-1. **User 1 authentication**:
-   - Browser opens for first user (e.g., Mom)
-   - Log in with **that user's Spotify account**
-   - Click "Agree" to authorize
-   - Browser redirects to localhost (connection error - that's OK!)
+1. **User 1 authentication** (e.g., Mom):
+   - Browser opens automatically
+   - **Log in with that user's Spotify account**
+   - Click "Agree" to authorize the app
+   - Browser redirects to localhost (shows connection error - that's OK!)
    - Copy the full URL from browser address bar
    - Paste URL into terminal
-   - Creates `.spotify_cache_mom` file (or whatever the user name is)
+   - Creates `.spotify_cache_mom` file
 
-2. **User 2 authentication**:
-   - Browser opens for second user (e.g., Dad)
-   - **Important**: Make sure to log in with the **correct Spotify account** for this user
-   - If the browser is still logged in as User 1, log out first!
-   - Authorize and paste the redirect URL
+2. **User 2 authentication** (e.g., Dad):
+   - Browser opens for second user
+   - **Important**: Make sure to log in with the **correct Spotify account**
+   - If browser is still logged in as User 1, log out first or use incognito mode!
+   - Click "Agree" and copy/paste the redirect URL
    - Creates `.spotify_cache_dad` file
 
-3. Repeat for each configured user
+3. Repeat for each user in your `SPOTIFY_USERS` list
 
-**Tip**: If users share a computer, use different browser profiles or incognito windows to avoid mixing up accounts during authentication.
+**Tips**:
+- Use different browser profiles or incognito windows to avoid mixing up accounts
+- Each user only needs to authenticate once - tokens are cached
+- Make sure each family member has been added in "User Management" in the Spotify app dashboard
 
 ### For Single User
 
-Run the script manually first:
+Same process, but only one authentication needed:
 
-```bash
-python spotify_nowplaying.py
-```
-
-This will:
-1. Open your browser for Spotify authentication
-2. Ask you to authorize the app
-3. Redirect back to localhost (you'll see a connection error - that's OK!)
-4. Copy the full URL from your browser and paste it back into the terminal
-5. Create a `.spotify_cache` file with your auth token
+1. Browser opens for Spotify login
+2. Authorize the app
+3. Copy/paste the redirect URL from browser
+4. Creates `.spotify_cache` file
 
 ## Add to Cron
 
