@@ -19,6 +19,9 @@ TABLE_NAME = "now_playing"
 # Maximum gap between entries to consider them part of the same session
 SESSION_GAP_MINUTES = 10
 
+# Minimum watch time in seconds to include a session (filters out brief pauses/skips)
+MIN_WATCH_TIME_SECONDS = 30
+
 
 def create_sessions_table(con):
     """
@@ -126,6 +129,7 @@ def create_sessions_table(con):
             media_type,
             session_id
         HAVING COUNT(*) >= 1
+            AND watch_time_seconds >= {MIN_WATCH_TIME_SECONDS}
         ORDER BY session_start DESC
     """)
 
