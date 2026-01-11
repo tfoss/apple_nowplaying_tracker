@@ -75,14 +75,29 @@ def create_sessions_table(con):
         with_session_breaks AS (
             SELECT
                 *,
-                -- Mark session breaks when gap > SESSION_GAP_MINUTES
+                -- Calculate gap in minutes
                 CASE
-                    WHEN prev_ts IS NULL
-                    OR EXTRACT(EPOCH FROM (ts - prev_ts)) > {SESSION_GAP_MINUTES * 60}
-                    THEN 1
+                    WHEN prev_ts IS NULL THEN NULL
+                    ELSE EXTRACT(EPOCH FROM (ts - prev_ts)) / 60.0
+                END as gap_minutes,
+                -- Determine threshold based on app and media type
+                CASE
+                    WHEN app = 'YouTube TV' THEN 45
+                    WHEN media_type = 'Video' THEN 30
+                    ELSE {SESSION_GAP_MINUTES}
+                END as threshold_minutes
+            FROM ordered_plays
+        ),
+        with_session_flags AS (
+            SELECT
+                *,
+                -- Mark session breaks when gap exceeds threshold
+                CASE
+                    WHEN gap_minutes IS NULL THEN 1
+                    WHEN gap_minutes > threshold_minutes THEN 1
                     ELSE 0
                 END as is_new_session
-            FROM ordered_plays
+            FROM with_session_breaks
         ),
         with_session_ids AS (
             SELECT
@@ -92,7 +107,7 @@ def create_sessions_table(con):
                     PARTITION BY device_name, title, series_name, season, episode, artist, album
                     ORDER BY ts
                 ) as session_id
-            FROM with_session_breaks
+            FROM with_session_flags
         )
         SELECT
             device_name,
