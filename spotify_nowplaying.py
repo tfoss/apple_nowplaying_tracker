@@ -390,4 +390,5 @@ def main():
 
 
 if __name__ == "__main__":
+    print(f"[{datetime.now().isoformat()}] Starting Spotify nowplaying scan")
     main()

@@ -336,5 +336,6 @@ async def log_all_devices(loop):
 
 
 if __name__ == "__main__":
+    print(f"[{datetime.now().isoformat()}] Starting Apple TV nowplaying scan")
     loop = asyncio.get_event_loop()
     loop.run_until_complete(log_all_devices(loop))
