@@ -238,10 +238,16 @@ def log_spotify_playback_for_user(user_config, con):
     device = current.get("device", {})
 
     ts = datetime.now()
-    # Clean device info (no concatenation)
-    device_name = device.get("name", "Unknown Device")
+    # Clean device info
+    raw_device_name = device.get("name", "Unknown Device")
     device_type = device.get("type", "Unknown")
     device_model = device_type  # Just the type, not "Spotify-Type"
+
+    # For generic device names like "iPhone", append user name for disambiguation
+    if raw_device_name in ("iPhone", "iPad"):
+        device_name = f"{raw_device_name} ({user_name})"
+    else:
+        device_name = raw_device_name
 
     # Map Spotify states to our format
     is_playing = current.get("is_playing", False)
