@@ -284,8 +284,10 @@ def export_sessions_to_csv(con, output_file="viewing_sessions.csv"):
     print(f"\n\nExported viewing sessions to: {output_path}")
 
 
-def export_sessions_to_parquet(con, export_dir="export"):
+def export_sessions_to_parquet(con, export_dir="export", upload_to_r2=True):
     """Export the viewing sessions to parquet format with a timestamp file."""
+    import subprocess
+
     export_path = Path(__file__).parent / export_dir
     export_path.mkdir(exist_ok=True)
 
@@ -306,6 +308,38 @@ def export_sessions_to_parquet(con, export_dir="export"):
 
     print(f"Exported viewing sessions to: {parquet_file}")
     print(f"Exported timestamp to: {latest_file}")
+
+    # Upload to R2
+    if upload_to_r2:
+        r2_bucket = "s3://fossfamilybucket/"
+        try:
+            subprocess.run(
+                [
+                    "aws",
+                    "s3",
+                    "--profile",
+                    "cloudflare",
+                    "cp",
+                    str(parquet_file),
+                    r2_bucket,
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "aws",
+                    "s3",
+                    "--profile",
+                    "cloudflare",
+                    "cp",
+                    str(latest_file),
+                    r2_bucket,
+                ],
+                check=True,
+            )
+            print(f"Uploaded to R2: {r2_bucket}")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to upload to R2: {e}")
 
 
 def main():
