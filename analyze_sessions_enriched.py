@@ -284,6 +284,30 @@ def export_sessions_to_csv(con, output_file="viewing_sessions.csv"):
     print(f"\n\nExported viewing sessions to: {output_path}")
 
 
+def export_sessions_to_parquet(con, export_dir="export"):
+    """Export the viewing sessions to parquet format with a timestamp file."""
+    export_path = Path(__file__).parent / export_dir
+    export_path.mkdir(exist_ok=True)
+
+    parquet_file = export_path / "viewing_sessions.parquet"
+    latest_file = export_path / "latest.json"
+
+    con.execute(f"""
+        COPY (
+            SELECT * FROM viewing_sessions
+        ) TO '{parquet_file}' (FORMAT PARQUET)
+    """)
+
+    con.execute(f"""
+        COPY (
+            SELECT now() AS generated_at
+        ) TO '{latest_file}' (FORMAT JSON)
+    """)
+
+    print(f"Exported viewing sessions to: {parquet_file}")
+    print(f"Exported timestamp to: {latest_file}")
+
+
 def main():
     """Main analysis function."""
     try:
@@ -299,8 +323,9 @@ def main():
         print_session_stats(con)
         print_daily_usage(con, days=7)
 
-        # Export to CSV
+        # Export to CSV and Parquet
         export_sessions_to_csv(con)
+        export_sessions_to_parquet(con)
 
         con.close()
 

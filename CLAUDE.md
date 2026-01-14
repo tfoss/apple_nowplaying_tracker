@@ -1,5 +1,9 @@
 # Development Guidelines
 
+## Environment
+- Use conda environment: `apple-tv`
+- Run Python scripts with: `conda run -n apple-tv python script.py`
+
 ## Git Practices
 - Commit changes frequently with clear, descriptive commit messages
 - Stage and commit after completing each logical unit of work
