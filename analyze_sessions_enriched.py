@@ -312,10 +312,11 @@ def export_sessions_to_parquet(con, export_dir="export", upload_to_r2=True):
     # Upload to R2
     if upload_to_r2:
         r2_bucket = "s3://fossfamilybucket/"
+        aws_cmd = "/opt/homebrew/bin/aws"
         try:
             subprocess.run(
                 [
-                    "aws",
+                    aws_cmd,
                     "s3",
                     "--profile",
                     "cloudflare",
@@ -327,7 +328,7 @@ def export_sessions_to_parquet(con, export_dir="export", upload_to_r2=True):
             )
             subprocess.run(
                 [
-                    "aws",
+                    aws_cmd,
                     "s3",
                     "--profile",
                     "cloudflare",
