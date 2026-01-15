@@ -127,7 +127,10 @@ def create_sessions_table(con):
             MAX(position) as max_position_reached,
             MAX(duration) as media_duration,
             -- Calculate watch time based on position progress
+            -- For single entries, use duration as fallback
             CASE
+                WHEN COUNT(*) = 1 AND MAX(duration) IS NOT NULL
+                THEN MAX(duration)
                 WHEN MAX(position) IS NOT NULL AND MIN(position) IS NOT NULL
                 THEN MAX(position) - MIN(position)
                 ELSE EXTRACT(EPOCH FROM (MAX(ts) - MIN(ts)))
