@@ -11,6 +11,8 @@ from pyatv import exceptions
 from pyatv.const import DeviceState
 from pyatv.storage.file_storage import FileStorage
 
+from notify import notify_device_error
+
 DB_PATH = Path(__file__).parent / "atv_usage.duckdb"
 TABLE_NAME = "now_playing"
 DEVICE_CACHE_PATH = Path(__file__).parent / "device_cache.json"
@@ -225,16 +227,20 @@ async def log_device_now_playing(config, loop, storage):
             print(" ".join(summary_parts))
 
         except exceptions.AuthenticationError:
-            print(
-                f"Authentication error for {config.name} – try re-pairing via atvremote."
-            )
+            error_msg = f"Authentication error for {config.name} – try re-pairing via atvremote."
+            print(error_msg)
+            notify_device_error(config.name, error_msg)
         except Exception as exc:
-            print(f"Error while logging now playing for {config.name}: {exc}")
+            error_msg = f"Error while logging now playing for {config.name}: {exc}"
+            print(error_msg)
+            notify_device_error(config.name, str(exc))
         finally:
             atv.close()
 
     except Exception as exc:
-        print(f"Error connecting to {config.name}: {exc}")
+        error_msg = f"Error connecting to {config.name}: {exc}"
+        print(error_msg)
+        notify_device_error(config.name, str(exc))
     finally:
         con.close()
 
