@@ -11,7 +11,7 @@ from pyatv import exceptions
 from pyatv.const import DeviceState
 from pyatv.storage.file_storage import FileStorage
 
-from notify import notify_device_error
+from notify import notify_device_error, record_device_success
 
 DB_PATH = Path(__file__).parent / "atv_usage.duckdb"
 TABLE_NAME = "now_playing"
@@ -104,6 +104,9 @@ async def log_device_now_playing(config, loop, storage):
             print(
                 f"[TIMING] {config.name}: metadata.playing() took {metadata_time:.2f}s"
             )
+
+            # Record successful connection (resets failure counter)
+            record_device_success(config.name)
 
             # Normalize state enum → text
             state = enum_to_text(playing.device_state)
